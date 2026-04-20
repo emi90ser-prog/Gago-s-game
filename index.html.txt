@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Gago: La Maestra Jardinera</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #f0f0f0;
+            font-family: 'Comic Sans MS', cursive, sans-serif;
+            touch-action: none;
+            user-select: none;
+        }
+        #game-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+        }
+        canvas {
+            display: block;
+        }
+        .overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0,0,0,0.7);
+            z-index: 1000;
+        }
+        .top-ui {
+            position: absolute;
+            top: 15px;
+            left: 0;
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            padding: 0 15px;
+            pointer-events: none;
+            z-index: 100;
+        }
+        .ui-element {
+            pointer-events: auto;
+            background: #ffffff;
+            padding: 8px 12px;
+            border-radius: 12px;
+            box-shadow: 0 4px 0 #ccc;
+            border: 2px solid #9c27b0;
+        }
+        .jump-btn {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 100px;
+            height: 100px;
+            background: #9c27b0;
+            border: 5px solid white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2.5rem;
+            box-shadow: 0 8px 0 #7b1fa2;
+            cursor: pointer;
+            z-index: 50;
+        }
+        .menu-card {
+            background: white;
+            padding: 25px;
+            border-radius: 25px;
+            text-align: center;
+            box-shadow: 0 10px 0 #bbb;
+            width: 90%;
+            max-width: 400px;
+        }
+        .char-option {
+            padding: 15px;
+            border: 4px solid #eee;
+            border-radius: 15px;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        .char-option.selected {
+            border-color: #9c27b0;
+            background: #f3e5f5;
+            transform: scale(1.05);
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <!-- Pantalla de Tutorial -->
+    <div id="tutorial-screen" class="overlay">
+        <div class="menu-card">
+            <h1 class="text-2xl font-bold text-purple-600 mb-4">¡Gago al Jardín!</h1>
+            <p class="mb-4 text-sm">Gago tiene su guardapolvo violeta listo y su música K-Pop a todo volumen.</p>
+            <button onclick="initAudio(); closeTutorial();" class="bg-purple-600 text-white w-full py-3 rounded-full font-bold shadow-lg">¡A clase! 🎵</button>
+        </div>
+    </div>
+
+    <!-- Menú de Inicio -->
+    <div id="start-menu" class="overlay" style="display: none;">
+        <div class="menu-card">
+            <h1 class="text-2xl font-bold text-purple-600 mb-4">Elige el Estilo</h1>
+            <div class="flex justify-around mb-6">
+                <div onclick="selectChar('gago1')" id="opt-gago1" class="char-option selected">
+                    <div class="text-5xl">👩‍🏫</div>
+                    <p class="font-bold text-sm">Violeta Clásico</p>
+                </div>
+                <div onclick="selectChar('gago2')" id="opt-gago2" class="char-option">
+                    <div class="text-5xl">👩‍🎨</div>
+                    <p class="font-bold text-sm">Violeta Artista</p>
+                </div>
+            </div>
+            <button onclick="startGame()" class="bg-purple-600 text-white w-full py-4 rounded-full text-xl font-bold shadow-lg">¡Empezar!</button>
+        </div>
+    </div>
+
+    <!-- Cuenta Regresiva -->
+    <div id="countdown-layer" class="overlay" style="display: none;">
+        <div id="countdown" class="text-white text-9xl font-bold">3</div>
+    </div>
+
+    <!-- Pausa -->
+    <div id="pause-menu" class="overlay" style="display: none;">
+        <div class="menu-card">
+            <h2 class="text-2xl font-bold mb-6">Recreo</h2>
+            <button onclick="togglePause()" class="bg-purple-500 text-white w-full py-4 rounded-full font-bold mb-4">Volver a Clase</button>
+            <button onclick="goToMenu()" class="bg-gray-400 text-white w-full py-2 rounded-full font-bold">Menú Principal</button>
+        </div>
+    </div>
+
+    <!-- UI Superior -->
+    <div class="top-ui">
+        <div>
+            <div class="ui-element font-bold text-xs">✏️ <span id="score">0</span> / <span id="target">5</span></div>
+            <div class="ui-element font-bold text-xs mt-1">🏫 <span id="room-name">Aula</span></div>
+        </div>
+        <div class="flex flex-col items-end gap-1">
+            <button onclick="togglePause()" class="ui-element font-bold px-4 text-xs">⏸️ Pausa</button>
+            <button id="music-toggle" onclick="toggleMusic()" class="ui-element font-bold text-xs">🎵 ON</button>
+        </div>
+    </div>
+
+    <div id="btn-jump" class="jump-btn">🚀</div>
+    <canvas id="gameCanvas"></canvas>
+</div>
+
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    
+    // Audio System (Synthesized K-Pop style loop)
+    let audioCtx;
+    let isMusicOn = true;
+    let musicInterval;
+
+    function initAudio() {
+        if (!audioCtx) {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            playKPopLoop();
+        }
+    }
+
+    function playKPopLoop() {
+        const tempo = 128; 
+        const noteDuration = 60 / tempo / 2;
+        let step = 0;
+        
+        // Simple K-Pop style pentatonic / bright melody
+        const melody = [659, 0, 783, 880, 659, 0, 587, 523, 659, 659, 783, 880, 987, 0, 880, 783];
+
+        musicInterval = setInterval(() => {
+            if (!isMusicOn || gameState !== 'playing') return;
+            
+            const freq = melody[step % melody.length];
+            if (freq > 0) {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                
+                osc.type = 'triangle'; // Suave pero brillante
+                osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+                
+                gain.gain.setValueAtTime(0.05, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.2);
+                
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.2);
+            }
+            
+            // Kick drum sim
+            if (step % 2 === 0) {
+                const kick = audioCtx.createOscillator();
+                const kGain = audioCtx.createGain();
+                kick.frequency.setValueAtTime(150, audioCtx.currentTime);
+                kick.frequency.exponentialRampToValueAtTime(40, audioCtx.currentTime + 0.1);
+                kGain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+                kGain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.1);
+                kick.connect(kGain);
+                kGain.connect(audioCtx.destination);
+                kick.start();
+                kick.stop(audioCtx.currentTime + 0.1);
+            }
+
+            step++;
+        }, noteDuration * 1000);
+    }
+
+    function toggleMusic() {
+        isMusicOn = !isMusicOn;
+        document.getElementById('music-toggle').innerText = isMusicOn ? "🎵 ON" : "🔇 OFF";
+    }
+
+    const config = {
+        rooms: [
+            { name: "Aula", floor: "#8d6e63", wall: "#fff9c4", decor: "🖍️", grad: ["#fff9c4", "#fbc02d"], platformColor: "#5d4037" },
+            { name: "Patio", floor: "#757575", wall: "#e1f5fe", decor: "🛝", grad: ["#81d4fa", "#e1f5fe"], platformColor: "#455a64" },
+            { name: "Biblioteca", floor: "#a1887f", wall: "#d7ccc8", decor: "📚", grad: ["#bcaaa4", "#d7ccc8"], platformColor: "#3e2723" }
+        ],
+        chars: {
+            gago1: { shirt: "#9c27b0", hair: "#4e342e" }, 
+            gago2: { shirt: "#ba68c8", hair: "#3e2723" }
+        }
+    };
+
+    let gameState = 'tutorial';
+    let selectedChar = 'gago1';
+    let score = 0;
+    let level = 1;
+    let targetScore = 5;
+    let baseSpeed = 3.5;
+    let speedAdjustment = 0;
+    let canvasWidth, canvasHeight;
+    
+    const player = {
+        x: 120, y: 0, w: 45, h: 95, 
+        vy: 0, jumpForce: -16, gravity: 0.7, 
+        grounded: false, jumpsLeft: 2
+    };
+
+    let platforms = [];
+    let schoolSupplies = [];
+
+    function closeTutorial() {
+        document.getElementById('tutorial-screen').style.display = 'none';
+        document.getElementById('start-menu').style.display = 'flex';
+        gameState = 'menu';
+    }
+
+    function selectChar(type) {
+        selectedChar = type;
+        document.getElementById('opt-gago1').classList.toggle('selected', type === 'gago1');
+        document.getElementById('opt-gago2').classList.toggle('selected', type === 'gago2');
+    }
+
+    function togglePause() {
+        if (gameState === 'playing') {
+            gameState = 'paused';
+            document.getElementById('pause-menu').style.display = 'flex';
+        } else if (gameState === 'paused') {
+            gameState = 'playing';
+            document.getElementById('pause-menu').style.display = 'none';
+        }
+    }
+
+    function goToMenu() {
+        gameState = 'menu';
+        document.getElementById('pause-menu').style.display = 'none';
+        document.getElementById('start-menu').style.display = 'flex';
+    }
+
+    function startGame() {
+        document.getElementById('start-menu').style.display = 'none';
+        resetGameLogic();
+        startCountdown();
+    }
+
+    function startCountdown() {
+        gameState = 'countdown';
+        const layer = document.getElementById('countdown-layer');
+        const countText = document.getElementById('countdown');
+        layer.style.display = 'flex';
+        let count = 3;
+        countText.innerText = count;
+
+        const interval = setInterval(() => {
+            count--;
+            if (count > 0) countText.innerText = count;
+            else {
+                clearInterval(interval);
+                layer.style.display = 'none';
+                gameState = 'playing';
+            }
+        }, 1000);
+    }
+
+    function resetGameLogic() {
+        score = 0; level = 1; targetScore = 5; baseSpeed = 3.5;
+        platforms = []; schoolSupplies = [];
+        updateUI(); spawnPlatform(true);
+    }
+
+    function updateUI() {
+        const roomIdx = (level - 1) % config.rooms.length;
+        document.getElementById('score').innerText = score;
+        document.getElementById('target').innerText = targetScore;
+        document.getElementById('room-name').innerText = config.rooms[roomIdx].name;
+    }
+
+    function resize() {
+        canvasWidth = window.innerWidth;
+        canvasHeight = window.innerHeight;
+        canvas.width = canvasWidth;
+        canvas.height = canvasHeight;
+        player.x = canvasWidth * 0.15;
+    }
+
+    function spawnPlatform(isInitial = false) {
+        let xPos, yPos;
+        const typeW = 180 + Math.random() * 60;
+        const roomIdx = (level - 1) % config.rooms.length;
+        
+        if (isInitial) {
+            xPos = 0; yPos = canvasHeight * 0.78;
+            player.y = yPos - player.h;
+        } else {
+            const last = platforms[platforms.length - 1];
+            xPos = last.x + last.width + 110 + Math.random() * 80;
+            const lastY = last.y;
+            yPos = Math.max(canvasHeight * 0.45, Math.min(canvasHeight * 0.8, lastY + (Math.random() * 200 - 100)));
+        }
+
+        platforms.push({ x: xPos, y: yPos, width: isInitial ? canvasWidth * 1.5 : typeW, height: 35, color: config.rooms[roomIdx].platformColor });
+
+        if (!isInitial && Math.random() > 0.2) {
+            schoolSupplies.push({
+                x: xPos + (typeW / 2) - 25, y: yPos - 75, w: 50, h: 50,
+                emoji: ['✏️', '📓', '🎨', '📐', '🎒', '🧴'][Math.floor(Math.random()*6)],
+                collected: false
+            });
+        }
+    }
+
+    function update() {
+        if (gameState !== 'playing') return;
+        const currentSpeed = baseSpeed + speedAdjustment;
+        player.vy += player.gravity;
+        player.y += player.vy;
+        platforms.forEach(p => p.x -= currentSpeed);
+        schoolSupplies.forEach(s => s.x -= currentSpeed);
+
+        player.grounded = false;
+        platforms.forEach(p => {
+            if (player.vy >= 0 && player.x + 10 < p.x + p.width && player.x + player.w - 10 > p.x && player.y + player.h >= p.y && player.y + player.h <= p.y + p.height + player.vy + 3) {
+                player.y = p.y - player.h; player.vy = 0; player.grounded = true; player.jumpsLeft = 2;
+            }
+        });
+
+        schoolSupplies.forEach(s => {
+            if (!s.collected && player.x < s.x + s.w && player.x + player.w > s.x && player.y < s.y + s.h && player.y + player.h > s.y) {
+                s.collected = true; score++;
+                if (score >= targetScore) { level++; score = 0; targetScore += 2; baseSpeed += 0.2; updateUI(); }
+                else { document.getElementById('score').innerText = score; }
+            }
+        });
+
+        if (platforms[platforms.length - 1].x < canvasWidth + 300) spawnPlatform();
+        platforms = platforms.filter(p => p.x + p.width > -300);
+        schoolSupplies = schoolSupplies.filter(s => s.x + s.w > -100 && !s.collected);
+        if (player.y > canvasHeight) goToMenu();
+    }
+
+    function drawGago(x, y, charData, bounce) {
+        const curY = y + bounce;
+
+        // Pelo Largo y Rizado (Fondo y Lados)
+        ctx.fillStyle = charData.hair;
+        ctx.beginPath();
+        ctx.roundRect(x - 10, curY + 10, 65, 75, 20); // Cuerpo del pelo
+        ctx.fill();
+
+        // Rulos laterales
+        const curls = [-8, -4, 4, 38, 44, 50];
+        curls.forEach(cx => {
+            ctx.beginPath(); ctx.arc(x + cx, curY + 40, 12, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.arc(x + cx, curY + 60, 10, 0, Math.PI * 2); ctx.fill();
+        });
+
+        // Cabeza (Piel)
+        ctx.fillStyle = "#ffdbac";
+        ctx.beginPath(); ctx.arc(x + 22, curY + 20, 20, 0, Math.PI * 2); ctx.fill();
+
+        // CORRECCIÓN: Pelo Superior (Coronilla)
+        ctx.fillStyle = charData.hair;
+        ctx.beginPath();
+        // Semicírculo superior para dar volumen arriba
+        ctx.arc(x + 22, curY + 15, 22, Math.PI, 0); 
+        ctx.fill();
+        // Copete o flequillo rizado
+        for(let i=0; i<5; i++) {
+            ctx.beginPath();
+            ctx.arc(x + 10 + (i*6), curY + 2, 8, 0, Math.PI*2);
+            ctx.fill();
+        }
+
+        // Anteojos
+        ctx.strokeStyle = "#111"; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.arc(x + 13, curY + 20, 8, 0, Math.PI * 2); ctx.stroke();
+        ctx.beginPath(); ctx.arc(x + 31, curY + 20, 8, 0, Math.PI * 2); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(x + 21, curY + 20); ctx.lineTo(x + 23, curY + 20); ctx.stroke();
+
+        // Ojos
+        ctx.fillStyle = "#000";
+        ctx.beginPath(); ctx.arc(x + 13, curY + 20, 2, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(x + 31, curY + 20, 2, 0, Math.PI * 2); ctx.fill();
+
+        // Guardapolvo Violeta
+        ctx.fillStyle = charData.shirt;
+        ctx.beginPath(); ctx.roundRect(x + 5, curY + 38, 35, 45, 8); ctx.fill();
+
+        // Cuello blanco
+        ctx.fillStyle = "#ffffff";
+        ctx.beginPath(); ctx.moveTo(x + 10, curY + 38); ctx.lineTo(x + 22, curY + 50); ctx.lineTo(x + 34, curY + 38); ctx.fill();
+
+        // Brazo con Tatuaje (Mano)
+        ctx.fillStyle = "#ffdbac";
+        ctx.beginPath(); ctx.roundRect(x + 40, curY + 45, 12, 20, 5); ctx.fill();
+        ctx.fillStyle = "#1a237e"; // Tinta
+        [ [46, 58], [49, 60], [44, 61] ].forEach(p => {
+            ctx.beginPath(); ctx.arc(x + p[0], curY + p[1], 1.5, 0, Math.PI * 2); ctx.fill();
+        });
+
+        // Piernas
+        ctx.fillStyle = "#222";
+        ctx.beginPath(); ctx.roundRect(x + 8, curY + 83, 12, 12, 3);
+        ctx.roundRect(x + 25, curY + 83, 12, 12, 3); ctx.fill();
+    }
+
+    function draw() {
+        ctx.globalAlpha = 1.0;
+        const room = config.rooms[(level - 1) % config.rooms.length];
+        const grad = ctx.createLinearGradient(0, 0, 0, canvasHeight);
+        grad.addColorStop(0, room.grad[0]); grad.addColorStop(1, room.grad[1]);
+        ctx.fillStyle = grad; ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+
+        // Decoración fondo
+        ctx.font = "120px Arial"; ctx.globalAlpha = 0.2;
+        ctx.fillText(room.decor, canvasWidth * 0.75, 250);
+        ctx.globalAlpha = 1.0;
+
+        platforms.forEach(p => {
+            ctx.fillStyle = p.color; ctx.beginPath(); ctx.roundRect(p.x, p.y, p.width, p.height, 8); ctx.fill();
+            ctx.fillStyle = "rgba(255,255,255,0.2)"; ctx.fillRect(p.x, p.y, p.width, 6);
+        });
+
+        // Útiles Escolares - 100% VISIBLES
+        ctx.font = "bold 50px Arial";
+        ctx.shadowBlur = 10; ctx.shadowColor = "rgba(0,0,0,0.5)";
+        schoolSupplies.forEach(s => {
+            ctx.fillStyle = "white"; ctx.beginPath(); ctx.arc(s.x + 25, s.y + 25, 28, 0, Math.PI * 2); ctx.fill();
+            ctx.fillText(s.emoji, s.x - 3, s.y + 42);
+        });
+        ctx.shadowBlur = 0;
+
+        const bounce = (player.grounded && gameState === 'playing') ? Math.sin(Date.now() / 150) * 4 : 0;
+        drawGago(player.x, player.y, config.chars[selectedChar], bounce);
+
+        if (gameState === 'playing' || gameState === 'countdown') update();
+        requestAnimationFrame(draw);
+    }
+
+    const triggerJump = (e) => {
+        if (e) e.preventDefault();
+        if (gameState === 'playing' && player.jumpsLeft > 0) {
+            player.vy = player.jumpForce; player.jumpsLeft--; player.grounded = false;
+        }
+    };
+
+    document.getElementById('btn-jump').addEventListener('touchstart', triggerJump);
+    document.getElementById('btn-jump').addEventListener('mousedown', triggerJump);
+    window.addEventListener('keydown', (e) => { if(e.code === 'Space' || e.code === 'ArrowUp') { e.preventDefault(); triggerJump(); } });
+    window.addEventListener('resize', resize);
+    resize(); draw();
+</script>
+</body>
+</html>
